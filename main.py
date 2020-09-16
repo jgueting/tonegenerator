@@ -21,11 +21,11 @@ if __name__ == '__main__':
     print(f'frequency: {converter.frequency:5.3f} Hz')
     print(f'tone: {converter.tone}')
 
-    print('generating sine wave...')
+    print('opening sounddevice...')
     try:
         device = sd.query_devices(deviceID, 'output')
-        # for key in device:
-        #     print(f'{key}: {device[key]}')
+        for key in device:
+            print(f'{key}: {device[key]}')
         samplerate = device['default_samplerate']
 
         def callback(outdata, frames, time, status):
@@ -41,6 +41,7 @@ if __name__ == '__main__':
 
         input_text = tone
 
+        print('generating sine wave...')
         with sd.OutputStream(device=deviceID, channels=1, callback=callback, samplerate=samplerate):
             while not input_text == 'quit':
                 input_text = input('>> ')
