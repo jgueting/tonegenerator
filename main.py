@@ -7,7 +7,7 @@ if __name__ == '__main__':
     print(sd.query_devices())
     deviceID = int(input('choose device (ID): '))
     start_idx = 0
-    amplitude = 1.
+    amplitude = .5
     base_frequency = 440.0
 
     converter = ToneFrequencyConverter(base_frequency)
@@ -33,10 +33,9 @@ if __name__ == '__main__':
                 print(status)
 
             global start_idx
-            global frequency
             t = (start_idx + np.arange(frames)) / samplerate
             t = t.reshape(-1, 1)
-            outdata[:] = amplitude * np.sin(2 * np.pi * converter.frequency * t)
+            outdata[:] = converter.amplitude * np.sin(2 * np.pi * converter.frequency * t)
             start_idx += frames
 
         input_text = tone
