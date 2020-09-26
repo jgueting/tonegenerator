@@ -1,6 +1,6 @@
 import sounddevice as sd
 import numpy as np
-from converter import ToneFrequencyConverter
+from helper.converter import ToneFrequencyConverter
 
 
 if __name__ == '__main__':

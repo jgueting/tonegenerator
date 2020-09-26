@@ -1,5 +1,8 @@
 import numpy as np
 import numpy.random as npr
+from helper.converter import ToneFrequencyConverter
+
+converter = ToneFrequencyConverter()
 
 ### simulate signal
 # time line
@@ -10,7 +13,7 @@ noise = 8 * (1 - 2 * npr.random_sample(time.size))
 # print(noise)
 
 # defining the signal
-signal_frequency = 90.0  #Hz
+signal_frequency = 440.0  #Hz
 signal_amplitude = 1.
 
 signal = signal_amplitude * np.sin(2 * np.pi * signal_frequency * time)
@@ -26,5 +29,6 @@ fourier = np.fft.rfft(signal)
 max_bin_index = np.argmax(np.absolute(fourier))
 coars_freq = np.fft.rfftfreq(signal.size, 1. / sample_rate)[max_bin_index]
 freq_adjuster = ((np.pi / 2 + np.angle(fourier[max_bin_index])) / np.pi) / signal.size * sample_rate
-print(f'frequency: {coars_freq + freq_adjuster:7.5f} Hz')
-
+converter.frequency = coars_freq + freq_adjuster
+print(f'frequency: {converter.frequency:7.5f} Hz')
+print(f'tone: {converter.tone}')
