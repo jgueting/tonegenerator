@@ -5,12 +5,17 @@ from helper.converter import ToneFrequencyConverter
 
 if __name__ == '__main__':
     print(sd.query_devices())
-    deviceID = int(input('choose device (ID): '))
+    device = input('choose device: ')
+    try:
+        deviceID = int(device)
+    except ValueError:
+        deviceID = device
+    sd.default.samplerate = 96000
     start_idx = 0
-    amplitude = .5
+    amplitude = .05
     base_frequency = 440.0
 
-    converter = ToneFrequencyConverter(base_frequency)
+    converter = ToneFrequencyConverter(base_frequency, amplitude)
 
     tone = 'A4'
 
@@ -26,15 +31,18 @@ if __name__ == '__main__':
         device = sd.query_devices(deviceID, 'output')
         for key in device:
             print(f'{key}: {device[key]}')
-        samplerate = device['default_samplerate']
+        # samplerate = device['default_samplerate']
+        samplerate = 96000
+        print(f'samplerate: {samplerate}')
+
+        sd.check_output_settings(device=deviceID, channels=1, samplerate=samplerate)
 
         def callback(outdata, frames, time, status):
             if status:
                 print(status)
 
             global start_idx
-            t = (start_idx + np.arange(frames)) / samplerate
-            t = t.reshape(-1, 1)
+            t = ((start_idx + np.arange(frames)) / samplerate).reshape(-1, 1)
             outdata[:] = converter.amplitude * np.sin(2 * np.pi * converter.frequency * t)
             start_idx += frames
 
