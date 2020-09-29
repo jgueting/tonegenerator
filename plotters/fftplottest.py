@@ -19,9 +19,9 @@ def int_or_str(text):
 
 
 channels = [1]       # input channels to plot
-device = 6           # input device (numeric ID or substring)
+device = 0           # input device (numeric ID or substring)
 window = 100         # visible time slot (ms)
-interval = 20        # minimum time between plot updates (ms)
+interval = 50        # minimum time between plot updates (ms)
 blocksize = None     # block size (in samples)
 samplerate = 96000   # sampling rate of audio device
 downsample = 1       # display every Nth sample
@@ -47,6 +47,9 @@ def update_plot(frame):
     """
     global plotdata
     global magnitude
+    global an_x
+    global an_y
+    global an_freq
 
     while True:
         try:
@@ -58,10 +61,24 @@ def update_plot(frame):
         plotdata[-shift:, :] = data
 
     # magnitude = np.absolute(np.fft.rfft(plotdata, axis=0, norm='ortho'))
-    magnitude = np.absolute(np.fft.rfft(plotdata, axis=0)) / plotdata.size
+    fourier = np.fft.rfft(plotdata, axis=0)
+    magnitude = np.absolute(fourier) / plotdata.size
+    index = ss.find_peaks(magnitude.reshape(magnitude.size), threshold=0.02)[0]
+    freq = float(frequency[index]) + ((np.pi / 2 + float(np.angle(fourier[index]))) / np.pi) / plotdata.size * samplerate
+
+    factor = .2
+    an_x += (float(frequency[index]) - an_x) * factor
+    an_y += (float(magnitude[index]) - an_y) * factor
+    an_freq += (freq - an_freq) * factor
+    if an_y > .02:
+        annotation.xy = (an_x, an_y)
+        annotation.set_position((an_x, an_y + .01 if an_y + .01 <= .5 else .5))
+        annotation._text = f'{an_freq:3.1f}Hz'
+    else:
+        annotation._text = ''
     for column, line in enumerate(lines):
         line.set_ydata(magnitude[:, column])
-    return lines
+    return lines, annotation
 
 
 try:
@@ -76,13 +93,19 @@ try:
     frequency = np.fft.rfftfreq(plotdata.size, 1. / samplerate).reshape(-1, 1)
 
     fig, ax = plt.subplots()
-    print(f'ax: {type(ax).__name__}')
     lines = ax.plot(frequency, magnitude)
     if len(channels) > 1:
         ax.legend(['channel {}'.format(c) for c in channels],
                   loc='lower left', ncol=len(channels))
     ax.set_xscale('log')
     ax.set_xlabel('Frequency [Hz]')
+    an_x = 0.
+    an_y = 0.
+    an_freq = 20.
+    annotation = ax.annotate('', (20., .0),
+                             rotation='vertical',
+                             horizontalalignment='center',
+                             fontsize = 'large')
     # ax.set_yscale('log')
     ax.axis((20, 20000 if max(frequency) >= 20000 else max(frequency), 0., .5))
     ax.set_yticks([0])
@@ -94,7 +117,7 @@ try:
     stream = sd.InputStream(
         device=device, channels=max(channels),
         samplerate=samplerate, callback=audio_callback)
-    ani = FuncAnimation(fig, update_plot, interval=interval, blit=True)
+    plot_ani = FuncAnimation(fig, update_plot, interval=interval, blit=False)
     with stream:
         plt.show()
 except Exception as e:
