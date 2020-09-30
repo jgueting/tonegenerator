@@ -63,19 +63,7 @@ def update_plot(frame):
     # magnitude = np.absolute(np.fft.rfft(plotdata, axis=0, norm='ortho'))
     fourier = np.fft.rfft(plotdata, axis=0)
     magnitude = np.absolute(fourier) / plotdata.size
-    index = ss.find_peaks(magnitude.reshape(magnitude.size), threshold=0.02)[0]
-    freq = float(frequency[index]) + ((np.pi / 2 + float(np.angle(fourier[index]))) / np.pi) / plotdata.size * samplerate
 
-    factor = .2
-    an_x += (float(frequency[index]) - an_x) * factor
-    an_y += (float(magnitude[index]) - an_y) * factor
-    an_freq += (freq - an_freq) * factor
-    if an_y > .02:
-        annotation.xy = (an_x, an_y)
-        annotation.set_position((an_x, an_y + .01 if an_y + .01 <= .5 else .5))
-        annotation._text = f'{an_freq:3.1f}Hz'
-    else:
-        annotation._text = ''
     for column, line in enumerate(lines):
         line.set_ydata(magnitude[:, column])
     return lines, annotation
