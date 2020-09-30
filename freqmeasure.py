@@ -13,7 +13,7 @@ def get_dom_freq(data_block, samplerate):
 
 if __name__ == '__main__':
     import numpy.random as npr
-    from helper.converter import ToneFrequencyConverter
+    from helpers.converter import ToneFrequencyConverter
 
     converter = ToneFrequencyConverter()
 

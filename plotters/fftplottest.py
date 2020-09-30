@@ -18,13 +18,12 @@ def int_or_str(text):
     except ValueError:
         return text
 
-
 channels = [1]       # input channels to plot
 device = 0           # input device (numeric ID or substring)
 window = 100         # visible time slot (ms)
 interval = 50        # minimum time between plot updates (ms)
 blocksize = None     # block size (in samples)
-samplerate = 96000   # sampling rate of audio device
+samplerate = 44100   # sampling rate of audio device
 downsample = 1       # display every Nth sample
 
 mapping = [c - 1 for c in channels]  # Channel numbers start with 1
@@ -59,13 +58,15 @@ def update_plot(frame):
         plotdata = np.roll(plotdata, -shift, axis=0)
         plotdata[-shift:, :] = data
 
-    # magnitude = np.absolute(np.fft.rfft(plotdata, axis=0, norm='ortho'))
+    # calc the fourier-transform
     fourier = np.fft.rfft(plotdata, axis=0)
+
+    # to plot the power spectrum calc the magnitude values
     magnitude = np.absolute(fourier) / plotdata.size
 
+    # find peaks to show their frequency
     peaks = list(ss.find_peaks(magnitude.reshape(magnitude.size), threshold=.02)[0])
-    # print(f'newly detected peaks: {peaks}')
-    # print(f'tracked peaks (pre): {[tracked["index"] for tracked in peak_tracker]}')
+    # ToDo: use auto correlation for better frequency detection of the peaks?
 
     # check tracked peaks against newly detected peaks
     for tracked in peak_tracker:
@@ -74,7 +75,8 @@ def update_plot(frame):
             # raise tracked peaks if existing
             if abs(tracked['index'] - peak) <= 2:
                 tracked['index'] = peak
-                tracked['weight'] += 1
+                if tracked['weight'] < 5:
+                    tracked['weight'] += 1
                 index = peaks.index(peak)
                 break
 
@@ -86,28 +88,40 @@ def update_plot(frame):
             tracked['weight'] -= 1
 
         # switch them on/off according to their weight
-        if tracked['weight'] > 30:
+        if tracked['weight'] >= 5:
             tracked['active'] = True
-        if tracked['weight'] < 10:
+        if tracked['weight'] < 3:
             tracked['active'] = False
 
     # print(f'left over newly detected peaks: {peaks}')
 
     # add new peaks to the tracker
     for peak in peaks:
-        peak_tracker.append({'index': peak, 'weight': 2, 'active': False})
+        mag = float(magnitude[peak])
+        peak_tracker.append({'index': peak,
+                             'weight': 2,
+                             'active': False,
+                             'mag': mag if mag < .4 else .4
+                             })
 
     # remove non-existing peaks from tracker
-    to_be_removed = [index for index in range(len(peak_tracker)) if peak_tracker[index]['weight'] <= 0]
-    for index in to_be_removed:
-        peak_tracker.pop(index)
+    index = 0
+    while index < len(peak_tracker):
+        if peak_tracker[index]['weight'] <= 0:
+            peak_tracker.pop(index)
+        else:
+            index += 1
 
     # print(f'tracked peaks (post): {[tracked["index"] for tracked in peak_tracker]}')
     for i in range(5):
-        if peak_tracker[i]['active']:
-            annotations[i].xy = (frequency[peak_tracker[i]['index']], .05)
-            annotations.set_
-
+        if i in range(len(peak_tracker)) and peak_tracker[i]['active']:
+            freq = float(frequency[peak_tracker[i]['index']])
+            peak_tracker[i]['mag'] += (float(magnitude[peak_tracker[i]['index']]) - peak_tracker[i]['mag']) * .08
+            annotations[i].xy = (freq, peak_tracker[i]['mag'])
+            annotations[i].set_position((freq, peak_tracker[i]['mag']))
+            annotations[i]._text = f"{freq:2.0f}±5Hz"
+        else:
+            annotations[i]._text = ''
 
     for column, line in enumerate(lines):
         line.set_ydata(magnitude[:, column])
@@ -136,7 +150,7 @@ try:
     peak_tracker = []
     annotations = [ax.annotate('', (20., .0),
                              rotation='vertical',
-                             horizontalalignment='center',
+                             horizontalalignment='right',
                              fontsize = 'large')
                    for i in range(5)]
     # ax.set_yscale('log')

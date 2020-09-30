@@ -1,6 +1,6 @@
 import sounddevice as sd
 import numpy as np
-from helper.converter import ToneFrequencyConverter
+from helpers.converter import ToneFrequencyConverter
 
 
 if __name__ == '__main__':
@@ -10,7 +10,7 @@ if __name__ == '__main__':
         deviceID = int(device)
     except ValueError:
         deviceID = device
-    sd.default.samplerate = 96000
+    sd.default.samplerate = 44100
     start_idx = 0
     amplitude = .05
     base_frequency = 440.0
@@ -32,7 +32,7 @@ if __name__ == '__main__':
         for key in device:
             print(f'{key}: {device[key]}')
         # samplerate = device['default_samplerate']
-        samplerate = 96000
+        samplerate = 44100
         print(f'samplerate: {samplerate}')
 
         sd.check_output_settings(device=deviceID, channels=1, samplerate=samplerate)
