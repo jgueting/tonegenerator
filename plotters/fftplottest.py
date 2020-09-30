@@ -47,9 +47,6 @@ def update_plot(frame):
     """
     global plotdata
     global magnitude
-    global an_x
-    global an_y
-    global an_freq
 
     while True:
         try:
@@ -66,7 +63,7 @@ def update_plot(frame):
 
     for column, line in enumerate(lines):
         line.set_ydata(magnitude[:, column])
-    return lines, annotation
+    return lines
 
 
 try:
@@ -87,14 +84,6 @@ try:
                   loc='lower left', ncol=len(channels))
     ax.set_xscale('log')
     ax.set_xlabel('Frequency [Hz]')
-    an_x = 0.
-    an_y = 0.
-    an_freq = 20.
-    annotation = ax.annotate('', (20., .0),
-                             rotation='vertical',
-                             horizontalalignment='center',
-                             fontsize = 'large')
-    # ax.set_yscale('log')
     ax.axis((20, 20000 if max(frequency) >= 20000 else max(frequency), 0., .5))
     ax.set_yticks([0])
     ax.yaxis.grid(True)
