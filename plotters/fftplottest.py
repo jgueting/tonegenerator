@@ -7,6 +7,7 @@ import sys
 from matplotlib.animation import FuncAnimation
 import matplotlib.pyplot as plt
 import numpy as np
+import scipy.signal as ss
 import sounddevice as sd
 
 
@@ -47,9 +48,6 @@ def update_plot(frame):
     """
     global plotdata
     global magnitude
-    global an_x
-    global an_y
-    global an_freq
 
     while True:
         try:
@@ -63,6 +61,12 @@ def update_plot(frame):
     # magnitude = np.absolute(np.fft.rfft(plotdata, axis=0, norm='ortho'))
     fourier = np.fft.rfft(plotdata, axis=0)
     magnitude = np.absolute(fourier) / plotdata.size
+
+    peaks = list(ss.find_peaks(magnitude.reshape(magnitude.size), threshold=.02)[0])
+
+    index = 0
+    while index < len(peaks):
+
 
     for column, line in enumerate(lines):
         line.set_ydata(magnitude[:, column])
@@ -87,9 +91,6 @@ try:
                   loc='lower left', ncol=len(channels))
     ax.set_xscale('log')
     ax.set_xlabel('Frequency [Hz]')
-    an_x = 0.
-    an_y = 0.
-    an_freq = 20.
     annotation = ax.annotate('', (20., .0),
                              rotation='vertical',
                              horizontalalignment='center',
