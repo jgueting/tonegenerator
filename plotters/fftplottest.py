@@ -48,6 +48,7 @@ def update_plot(frame):
     """
     global plotdata
     global magnitude
+    global peak_tracker
 
     while True:
         try:
@@ -63,14 +64,54 @@ def update_plot(frame):
     magnitude = np.absolute(fourier) / plotdata.size
 
     peaks = list(ss.find_peaks(magnitude.reshape(magnitude.size), threshold=.02)[0])
+    # print(f'newly detected peaks: {peaks}')
+    # print(f'tracked peaks (pre): {[tracked["index"] for tracked in peak_tracker]}')
 
-    index = 0
-    while index < len(peaks):
+    # check tracked peaks against newly detected peaks
+    for tracked in peak_tracker:
+        index = -1
+        for peak in peaks:
+            # raise tracked peaks if existing
+            if abs(tracked['index'] - peak) <= 2:
+                tracked['index'] = peak
+                tracked['weight'] += 1
+                index = peaks.index(peak)
+                break
+
+        if index > -1:
+            # remove newly detected peak if already tracked
+            peaks.pop(index)
+        else:
+            # degrade tracked peaks if not existing
+            tracked['weight'] -= 1
+
+        # switch them on/off according to their weight
+        if tracked['weight'] > 30:
+            tracked['active'] = True
+        if tracked['weight'] < 10:
+            tracked['active'] = False
+
+    # print(f'left over newly detected peaks: {peaks}')
+
+    # add new peaks to the tracker
+    for peak in peaks:
+        peak_tracker.append({'index': peak, 'weight': 2, 'active': False})
+
+    # remove non-existing peaks from tracker
+    to_be_removed = [index for index in range(len(peak_tracker)) if peak_tracker[index]['weight'] <= 0]
+    for index in to_be_removed:
+        peak_tracker.pop(index)
+
+    # print(f'tracked peaks (post): {[tracked["index"] for tracked in peak_tracker]}')
+    for i in range(5):
+        if peak_tracker[i]['active']:
+            annotations[i].xy = (frequency[peak_tracker[i]['index']], .05)
+            annotations.set_
 
 
     for column, line in enumerate(lines):
         line.set_ydata(magnitude[:, column])
-    return lines, annotation
+    return lines, annotations
 
 
 try:
@@ -91,10 +132,13 @@ try:
                   loc='lower left', ncol=len(channels))
     ax.set_xscale('log')
     ax.set_xlabel('Frequency [Hz]')
-    annotation = ax.annotate('', (20., .0),
+
+    peak_tracker = []
+    annotations = [ax.annotate('', (20., .0),
                              rotation='vertical',
                              horizontalalignment='center',
                              fontsize = 'large')
+                   for i in range(5)]
     # ax.set_yscale('log')
     ax.axis((20, 20000 if max(frequency) >= 20000 else max(frequency), 0., .5))
     ax.set_yticks([0])
