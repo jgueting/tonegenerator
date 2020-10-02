@@ -1,4 +1,5 @@
 import numpy as np
+import scipy.signal as ss
 
 def get_dom_freq(data_block, samplerate):
     # calculating fourier transform
@@ -11,6 +12,23 @@ def get_dom_freq(data_block, samplerate):
 
     return coarse_freq + freq_adjuster
 
+
+def get_per_freq(data_block, samplerate):
+    # calculating auto correlation
+    periods = ss.correlate(data_block, data_block, mode='full')
+    periods = periods[len(periods) // 2:]
+
+    peaks = ss.find_peaks(periods)[0]
+    print(f'peaks:\n{peaks}')
+    proms = ss.peak_prominences(periods, peaks)[0]
+    print(f'proms:\n{proms}')
+    fundamental_peak = peaks[np.argmax(proms)]
+    print(f'most prominent peak: {fundamental_peak}')
+
+    return 1. / (fundamental_peak / samplerate)
+
+
+
 if __name__ == '__main__':
     import numpy.random as npr
     from helpers.converter import ToneFrequencyConverter
@@ -19,12 +37,12 @@ if __name__ == '__main__':
 
     ### simulate signal
     # time line
-    sample_rate = 96000.  #frames per second
+    sample_rate = 44100.  #frames per second
     time = np.arange(0., .1, 1. / sample_rate, dtype=float)  #time values in seconds
     # print(time)
 
     # defining the signal
-    signal_frequency = 440.0  #Hz
+    signal_frequency = 100.3  #Hz
     signal_amplitude = 1.
 
     signal = signal_amplitude * np.sin(2 * np.pi * signal_frequency * time)
@@ -35,6 +53,7 @@ if __name__ == '__main__':
     # print(noise)
 
     ### "measure" frequency
-    converter.frequency = get_dom_freq(signal + noise, sample_rate)
+    # converter.frequency = get_dom_freq(signal + noise, sample_rate)
+    converter.frequency = get_per_freq(signal, sample_rate)
     print(f'tone: {converter.tone}')
     print(f'frequency: {converter.frequency:7.5f} Hz')

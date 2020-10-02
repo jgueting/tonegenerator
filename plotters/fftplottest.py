@@ -18,13 +18,18 @@ def int_or_str(text):
     except ValueError:
         return text
 
-channels = [1]       # input channels to plot
-device = 0           # input device (numeric ID or substring)
-window = 100         # visible time slot (ms)
-interval = 50        # minimum time between plot updates (ms)
-blocksize = None     # block size (in samples)
-samplerate = 44100   # sampling rate of audio device
-downsample = 1       # display every Nth sample
+channels = [1]         # input channels to plot
+device = 0             # input device (numeric ID or substring)
+window = 100           # visible time slot (ms)
+interval = 50          # minimum time between plot updates (ms)
+blocksize = None       # block size (in samples)
+samplerate = 44100     # sampling rate of audio device
+downsample = 1         # display every Nth sample
+
+# peak tracker
+peaks_tracked = 1
+activate = 5
+sleep = 3
 
 mapping = [c - 1 for c in channels]  # Channel numbers start with 1
 q = queue.Queue()
@@ -58,15 +63,21 @@ def update_plot(frame):
         plotdata = np.roll(plotdata, -shift, axis=0)
         plotdata[-shift:, :] = data
 
-    # calc the fourier-transform
-    fourier = np.fft.rfft(plotdata, axis=0)
+    length = plotdata.size
 
-    # to plot the power spectrum calc the magnitude values
-    magnitude = np.absolute(fourier) / plotdata.size
+    # calc magnitudes to plot the power spectrum
+    magnitude = np.absolute(np.fft.rfft(plotdata, axis=0)) / length
 
-    # find peaks to show their frequency
-    peaks = list(ss.find_peaks(magnitude.reshape(magnitude.size), threshold=.02)[0])
-    # ToDo: use auto correlation for better frequency detection of the peaks?
+    # find fundamental frequency
+    freqdata = plotdata.reshape(length)
+    periods = ss.correlate(freqdata, freqdata, mode='full')
+    periods = periods[len(periods) // 2:]
+    peaks = ss.find_peaks(periods, threshold=.2)[0]
+    proms = ss.peak_prominences(periods, peaks)[0]
+    if peaks.size > 0:
+        peaks = [peaks[np.argmax(proms)]]
+    else:
+        peaks = []
 
     # check tracked peaks against newly detected peaks
     for tracked in peak_tracker:
@@ -75,7 +86,7 @@ def update_plot(frame):
             # raise tracked peaks if existing
             if abs(tracked['index'] - peak) <= 2:
                 tracked['index'] = peak
-                if tracked['weight'] < 5:
+                if tracked['weight'] < activate:
                     tracked['weight'] += 1
                 index = peaks.index(peak)
                 break
@@ -88,20 +99,19 @@ def update_plot(frame):
             tracked['weight'] -= 1
 
         # switch them on/off according to their weight
-        if tracked['weight'] >= 5:
+        if tracked['weight'] >= activate:
             tracked['active'] = True
-        if tracked['weight'] < 3:
+        if tracked['weight'] < sleep:
             tracked['active'] = False
 
     # print(f'left over newly detected peaks: {peaks}')
 
     # add new peaks to the tracker
     for peak in peaks:
-        mag = float(magnitude[peak])
         peak_tracker.append({'index': peak,
                              'weight': 2,
                              'active': False,
-                             'mag': mag if mag < .4 else .4
+                             'freq': 1. / (peak / samplerate)
                              })
 
     # remove non-existing peaks from tracker
@@ -112,14 +122,13 @@ def update_plot(frame):
         else:
             index += 1
 
-    # print(f'tracked peaks (post): {[tracked["index"] for tracked in peak_tracker]}')
-    for i in range(5):
-        if i in range(len(peak_tracker)) and peak_tracker[i]['active']:
-            freq = float(frequency[peak_tracker[i]['index']])
-            peak_tracker[i]['mag'] += (float(magnitude[peak_tracker[i]['index']]) - peak_tracker[i]['mag']) * .08
-            annotations[i].xy = (freq, peak_tracker[i]['mag'])
-            annotations[i].set_position((freq, peak_tracker[i]['mag']))
-            annotations[i]._text = f"{freq:2.0f}±5Hz"
+    # display peaks
+    for i in range(peaks_tracked):
+        if i in range(len(peak_tracker)):
+            peak_tracker[i]['freq'] += ((1. / (peak_tracker[i]['index'] / samplerate)) - peak_tracker[i]['freq']) * .1
+            annotations[i].xy = (peak_tracker[i]['freq'], .25)
+            annotations[i].set_position((peak_tracker[i]['freq'], .25))
+            annotations[i]._text = f"{peak_tracker[i]['freq']:3.1f}Hz"
         else:
             annotations[i]._text = ''
 
@@ -152,7 +161,7 @@ try:
                              rotation='vertical',
                              horizontalalignment='right',
                              fontsize = 'large')
-                   for i in range(5)]
+                   for i in range(peaks_tracked)]
     # ax.set_yscale('log')
     ax.axis((20, 20000 if max(frequency) >= 20000 else max(frequency), 0., .5))
     ax.set_yticks([0])
