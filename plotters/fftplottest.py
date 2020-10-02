@@ -7,7 +7,9 @@ import sys
 from matplotlib.animation import FuncAnimation
 import matplotlib.pyplot as plt
 import numpy as np
+import scipy.signal as ss
 import sounddevice as sd
+from helpers.converter import ToneFrequencyConverter
 
 
 def int_or_str(text):
@@ -17,14 +19,19 @@ def int_or_str(text):
     except ValueError:
         return text
 
+channels = [1]         # input channels to plot
+device = 0             # input device (numeric ID or substring)
+window = 100           # visible time slot (ms)
+interval = 50          # minimum time between plot updates (ms)
+blocksize = None       # block size (in samples)
+samplerate = 44100     # sampling rate of audio device
+downsample = 1         # display every Nth sample
+upsampling = 4
 
-channels = [1]       # input channels to plot
-device = 0           # input device (numeric ID or substring)
-window = 100         # visible time slot (ms)
-interval = 50        # minimum time between plot updates (ms)
-blocksize = None     # block size (in samples)
-samplerate = 96000   # sampling rate of audio device
-downsample = 1       # display every Nth sample
+# peak tracker
+peaks_tracked = 1
+activate = 5
+sleep = 3
 
 mapping = [c - 1 for c in channels]  # Channel numbers start with 1
 q = queue.Queue()
@@ -47,6 +54,8 @@ def update_plot(frame):
     """
     global plotdata
     global magnitude
+    global peak_tracker
+    global converter
 
     while True:
         try:
@@ -57,13 +66,81 @@ def update_plot(frame):
         plotdata = np.roll(plotdata, -shift, axis=0)
         plotdata[-shift:, :] = data
 
-    # magnitude = np.absolute(np.fft.rfft(plotdata, axis=0, norm='ortho'))
-    fourier = np.fft.rfft(plotdata, axis=0)
-    magnitude = np.absolute(fourier) / plotdata.size
+    length = plotdata.size
+
+    # calc magnitudes to plot the power spectrum
+    magnitude = np.absolute(np.fft.rfft(plotdata, axis=0)) / length
+
+    # find fundamental frequency
+    freqdata = plotdata.reshape(length)
+    freqdata = ss.resample(freqdata, freqdata.size * upsampling)
+    periods = ss.correlate(freqdata, freqdata, mode='full')
+    periods = periods[len(periods) // 2:]
+    peaks = ss.find_peaks(periods, threshold=1.)[0]
+    proms = ss.peak_prominences(periods, peaks)[0]
+    if peaks.size > 0:
+        peaks = [peaks[np.argmax(proms)]]
+    else:
+        peaks = []
+
+    # check tracked peaks against newly detected peaks
+    for tracked in peak_tracker:
+        index = -1
+        for peak in peaks:
+            # raise tracked peaks if existing
+            if abs(tracked['index'] - peak) <= 2:
+                tracked['index'] = peak
+                if tracked['weight'] < activate:
+                    tracked['weight'] += 1
+                index = peaks.index(peak)
+                break
+
+        if index > -1:
+            # remove newly detected peak if already tracked
+            peaks.pop(index)
+        else:
+            # degrade tracked peaks if not existing
+            tracked['weight'] -= 1
+
+        # switch them on/off according to their weight
+        if tracked['weight'] >= activate:
+            tracked['active'] = True
+        if tracked['weight'] < sleep:
+            tracked['active'] = False
+
+    # print(f'left over newly detected peaks: {peaks}')
+
+    # add new peaks to the tracker
+    for peak in peaks:
+        peak_tracker.append({'index': peak,
+                             'weight': 2,
+                             'active': False,
+                             'freq': (samplerate * upsampling) / peak
+                             })
+
+    # remove non-existing peaks from tracker
+    index = 0
+    while index < len(peak_tracker):
+        if peak_tracker[index]['weight'] <= 0:
+            peak_tracker.pop(index)
+        else:
+            index += 1
+
+    # display peaks
+    for i in range(peaks_tracked):
+        if i in range(len(peak_tracker)):
+            peak_tracker[i]['freq'] += (((samplerate * upsampling) / peak_tracker[i]['index']) - peak_tracker[i]['freq']) * .05
+            annotations[i].xy = (peak_tracker[i]['freq'], .25)
+            annotations[i].set_position((peak_tracker[i]['freq'], .25))
+            # annotations[i]._text = f"{peak_tracker[i]['freq']:3.1f}Hz"
+            converter.frequency = peak_tracker[i]['freq']
+            annotations[i]._text = f"{converter.tone}"
+        else:
+            annotations[i]._text = ''
 
     for column, line in enumerate(lines):
         line.set_ydata(magnitude[:, column])
-    return lines
+    return lines, annotations
 
 
 try:
@@ -77,19 +154,29 @@ try:
     magnitude = np.absolute(np.fft.rfft(plotdata, axis=0)) / plotdata.size
     frequency = np.fft.rfftfreq(plotdata.size, 1. / samplerate).reshape(-1, 1)
 
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(num='Tuner')
     lines = ax.plot(frequency, magnitude)
     if len(channels) > 1:
         ax.legend(['channel {}'.format(c) for c in channels],
                   loc='lower left', ncol=len(channels))
     ax.set_xscale('log')
     ax.set_xlabel('Frequency [Hz]')
+
+    peak_tracker = []
+    annotations = [ax.annotate('', (20., .0),
+                             rotation='vertical',
+                             horizontalalignment='right',
+                             fontsize = 'large')
+                   for i in range(peaks_tracked)]
+    # ax.set_yscale('log')
     ax.axis((20, 20000 if max(frequency) >= 20000 else max(frequency), 0., .5))
     ax.set_yticks([0])
     ax.yaxis.grid(True)
     ax.tick_params(bottom=True, top=False, labelbottom=True,
                    right=False, left=False, labelleft=False)
     fig.tight_layout(pad=1)
+
+    converter = ToneFrequencyConverter()
 
     stream = sd.InputStream(
         device=device, channels=max(channels),
