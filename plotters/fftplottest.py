@@ -12,15 +12,9 @@ import sounddevice as sd
 from helpers.converter import ToneFrequencyConverter
 
 
-def int_or_str(text):
-    """Helper function for argument parsing."""
-    try:
-        return int(text)
-    except ValueError:
-        return text
-
+# general parameters
 device = 0             # input device (numeric ID or substring)
-channels = [1]         # input channels to plot
+channels = [1, 2]         # input channels to plot
 
 window = 200           # visible time slot (ms)
 interval = 50          # minimum time between plot updates (ms)
@@ -33,18 +27,23 @@ peaks_tracked = 1
 activate = 5
 sleep = 3
 
+
+# audio input
 mapping = [c - 1 for c in channels]  # Channel numbers start with 1
 q = queue.Queue()
-
+shape = None
+first = True
 
 def audio_callback(indata, frames, time, status):
     """This is called (from a separate thread) for each audio block."""
     if status:
+        # print(f'indata.shape: {indata.shape}')
         print(status, file=sys.stderr)
     # Fancy indexing with mapping creates a (necessary!) copy:
     q.put(indata[::, mapping])
 
 
+# plotting
 def update_plot(frame):
     """This is called by matplotlib for each plot update.
 
@@ -66,14 +65,14 @@ def update_plot(frame):
         plotdata = np.roll(plotdata, -shift, axis=0)
         plotdata[-shift:, :] = data
 
-    length = plotdata.size
+    length = plotdata.shape[0]
 
     # calc magnitudes in dB to plot the power spectrum
     magnitude = 10 * np.log10(np.absolute(np.fft.rfft(plotdata, axis=0)) / length)
 
-    # find fundamental frequency
-    freqdata = plotdata.reshape(length)
-    freqdata = ss.resample(freqdata, freqdata.size * upsampling)
+    # find fundamental frequency of channel 1 (with index 0)
+    freqdata = np.rot90(np.fliplr(plotdata))[0]
+    freqdata = ss.resample(freqdata, freqdata.shape[0] * upsampling)
     periods = ss.correlate(freqdata, freqdata, mode='full')
     periods = periods[len(periods) // 2:]
     peaks = ss.find_peaks(periods, threshold=.2)[0]
@@ -143,6 +142,7 @@ def update_plot(frame):
     return lines, annotations
 
 
+# main
 try:
     if samplerate is None:
         device_info = sd.query_devices(device, 'input')
@@ -151,7 +151,7 @@ try:
     length = int(window / 1000 * samplerate)
     plotdata = np.zeros((length, len(channels)))
     magnitude = np.zeros((length // 2 + 1, len(channels)))
-    frequency = np.fft.rfftfreq(plotdata.size, 1. / samplerate).reshape(-1, 1)
+    frequency = np.fft.rfftfreq(plotdata.shape[0], 1. / samplerate).reshape(-1, 1)
 
     fig, ax = plt.subplots(num='Tuner')
     lines = ax.plot(frequency, magnitude)
