@@ -19,14 +19,14 @@ def int_or_str(text):
     except ValueError:
         return text
 
-channels = [1]         # input channels to plot
 device = 0             # input device (numeric ID or substring)
-window = 100           # visible time slot (ms)
+channels = [1]         # input channels to plot
+
+window = 200           # visible time slot (ms)
 interval = 50          # minimum time between plot updates (ms)
-blocksize = None       # block size (in samples)
 samplerate = 44100     # sampling rate of audio device
-downsample = 1         # display every Nth sample
-upsampling = 4
+upsampling = 4         # factor for upsampling the input data to get more accurate frequency values
+y_min_level = -40      # minium power level to be shown
 
 # peak tracker
 peaks_tracked = 1
@@ -42,7 +42,7 @@ def audio_callback(indata, frames, time, status):
     if status:
         print(status, file=sys.stderr)
     # Fancy indexing with mapping creates a (necessary!) copy:
-    q.put(indata[::downsample, mapping])
+    q.put(indata[::, mapping])
 
 
 def update_plot(frame):
@@ -68,15 +68,15 @@ def update_plot(frame):
 
     length = plotdata.size
 
-    # calc magnitudes to plot the power spectrum
-    magnitude = np.absolute(np.fft.rfft(plotdata, axis=0)) / length
+    # calc magnitudes in dB to plot the power spectrum
+    magnitude = 10 * np.log10(np.absolute(np.fft.rfft(plotdata, axis=0)) / length)
 
     # find fundamental frequency
     freqdata = plotdata.reshape(length)
     freqdata = ss.resample(freqdata, freqdata.size * upsampling)
     periods = ss.correlate(freqdata, freqdata, mode='full')
     periods = periods[len(periods) // 2:]
-    peaks = ss.find_peaks(periods, threshold=1.)[0]
+    peaks = ss.find_peaks(periods, threshold=.2)[0]
     proms = ss.peak_prominences(periods, peaks)[0]
     if peaks.size > 0:
         peaks = [peaks[np.argmax(proms)]]
@@ -129,9 +129,9 @@ def update_plot(frame):
     # display peaks
     for i in range(peaks_tracked):
         if i in range(len(peak_tracker)):
-            peak_tracker[i]['freq'] += (((samplerate * upsampling) / peak_tracker[i]['index']) - peak_tracker[i]['freq']) * .05
-            annotations[i].xy = (peak_tracker[i]['freq'], .25)
-            annotations[i].set_position((peak_tracker[i]['freq'], .25))
+            peak_tracker[i]['freq'] += (((samplerate * upsampling) / peak_tracker[i]['index']) - peak_tracker[i]['freq']) * .07
+            annotations[i].xy = (peak_tracker[i]['freq'], y_min_level * .3)
+            annotations[i].set_position((peak_tracker[i]['freq'], y_min_level * .3))
             # annotations[i]._text = f"{peak_tracker[i]['freq']:3.1f}Hz"
             converter.frequency = peak_tracker[i]['freq']
             annotations[i]._text = f"{converter.tone}"
@@ -148,10 +148,9 @@ try:
         device_info = sd.query_devices(device, 'input')
         samplerate = device_info['default_samplerate']
 
-    length = int(window * samplerate / (1000 * downsample))
+    length = int(window / 1000 * samplerate)
     plotdata = np.zeros((length, len(channels)))
-    # magnitude = np.absolute(np.fft.rfft(plotdata, axis=0, norm='ortho'))
-    magnitude = np.absolute(np.fft.rfft(plotdata, axis=0)) / plotdata.size
+    magnitude = np.zeros((length // 2 + 1, len(channels)))
     frequency = np.fft.rfftfreq(plotdata.size, 1. / samplerate).reshape(-1, 1)
 
     fig, ax = plt.subplots(num='Tuner')
@@ -161,6 +160,7 @@ try:
                   loc='lower left', ncol=len(channels))
     ax.set_xscale('log')
     ax.set_xlabel('Frequency [Hz]')
+    ax.set_ylabel('Power [dB]')
 
     peak_tracker = []
     annotations = [ax.annotate('', (20., .0),
@@ -168,13 +168,10 @@ try:
                              horizontalalignment='right',
                              fontsize = 'large')
                    for i in range(peaks_tracked)]
-    # ax.set_yscale('log')
-    ax.axis((20, 20000 if max(frequency) >= 20000 else max(frequency), 0., .5))
-    ax.set_yticks([0])
-    ax.yaxis.grid(True)
+    ax.axis((20, 20000 if max(frequency) >= 20000 else max(frequency), y_min_level, 0.))
     ax.tick_params(bottom=True, top=False, labelbottom=True,
-                   right=False, left=False, labelleft=False)
-    fig.tight_layout(pad=1)
+                   right=False, left=True, labelleft=True)
+    fig.tight_layout(pad=0.5)
 
     converter = ToneFrequencyConverter()
 
